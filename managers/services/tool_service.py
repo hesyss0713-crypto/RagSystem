@@ -320,6 +320,7 @@ class ToolService:
         if not query_text:
             raise ValueError("query is required")
         payload = [item.to_dict() for item in results]
+        top_match = payload[0] if payload else None
         lines = [
             f"[RAG Search Results - {label}]",
             f"Query: {query_text}",
@@ -344,7 +345,7 @@ class ToolService:
                     lines.append(f"{idx}. {suggestion}")
         else:
             lines.append("\n[Top Match]\n관련 결과를 찾지 못했습니다.")
-        return {"text": "\n".join(lines), "meta": {"match_count": len(payload)}}
+        return {"text": "\n".join(lines), "meta": {"match_count": len(payload), "top_match": top_match}}
 
     def _build_suggestions(self, query_text: str, top_result) -> List[str]:
         file_hint = top_result.file_path if top_result else "해당 위치"

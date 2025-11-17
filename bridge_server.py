@@ -21,6 +21,7 @@ from managers.context_manager import ContextManager
 from managers.services.tool_service import ToolService
 from managers.services.self_check_service import SelfCheckService
 from managers.services.routing_manager import MultiSignalRouter
+from managers.services.refactor_service import RefactorService
 from managers.embedding import EmbeddingManager
 from managers.rag_query import RAGQueryManager
 from managers.topic_manager import TopicManager
@@ -223,6 +224,79 @@ def _format_action_plan_block(plan: Dict[str, Any] | None) -> str:
     return "\n".join(lines)
 
 
+def _format_refactor_block(refactor_result: Dict[str, Any] | None) -> str:
+    if not refactor_result:
+        return ""
+    lines = [
+        "### Refactor Result ###",
+        f"File: {refactor_result.get('relative_path')}",
+        f"Summary: {refactor_result.get('summary')}",
+    ]
+    original = refactor_result.get("original_snippet")
+    if original:
+        lines.append("")
+        lines.append("Original Snippet:")
+        lines.append(original)
+    updated_preview = refactor_result.get("updated_code") or ""
+    if updated_preview:
+        preview = updated_preview.strip()
+        if len(preview) > 1000:
+            preview = preview[:1000] + "\n... (truncated)"
+        lines.append("")
+        lines.append("Updated Code Preview:")
+        lines.append(preview)
+    diff = refactor_result.get("diff_preview")
+    if diff:
+        lines.append("")
+        lines.append("Diff Preview:")
+        lines.append(diff)
+    return "\n".join(lines)
+
+
+def _format_retrieval_block(tool_payload: Dict[str, Any] | None) -> str:
+    if not tool_payload:
+        return ""
+    name = (tool_payload.get("name") or "").lower()
+    if not name.startswith("rag_search"):
+        return ""
+    meta = tool_payload.get("meta") or {}
+    if not isinstance(meta, dict):
+        meta = {}
+    top_match = meta.get("top_match")
+    if not isinstance(top_match, dict):
+        top_match = {}
+    snippet = (top_match.get("content") or "").strip()
+    if not snippet:
+        snippet = (tool_payload.get("text") or "").strip()
+    if not snippet:
+        return ""
+    lines = ["### Retrieved Content ###"]
+    file_path = top_match.get("file_path")
+    if file_path:
+        lines.append(f"File: {file_path}")
+    scope = top_match.get("semantic_scope")
+    if scope:
+        lines.append(f"Scope: {scope}")
+    lines.append("")
+    if len(snippet) > 1200:
+        snippet = snippet[:1200] + "\n... (truncated)"
+    lines.append(snippet)
+    return "\n".join(lines)
+
+
+async def _run_refactor_flow(user_text: str, tool_meta: Dict[str, Any] | None) -> Dict[str, Any] | None:
+    if not tool_meta:
+        return None
+    top_match = tool_meta.get("top_match")
+    if not top_match:
+        return None
+    try:
+        return await refactor_service.run_refactor(user_text=user_text, match=top_match)
+    except Exception as exc:
+        print(f"[Refactor] ⚠️ refactor flow failed: {exc}")
+        return None
+
+
 def _build_torch_source_prompt(user_text: str) -> str | None:
     context = torch_loader.build_context_from_text(user_text)
     if not context:
@@ -350,6 +424,7 @@ async def handle_user_message(user_text: str, tab_id: int | None):
         executed_function = None
         tool_meta = None
         tool_payload = None
+        refactor_result = None
         if function_call.get("name") and function_call.get("name") != "none":
             if tool_service.is_answer_direct(function_call):
                 executed_function = {"name": "answer_direct", "arguments": {}}
@@ -364,18 +439,8 @@ async def handle_user_message(user_text: str, tab_id: int | None):
                         "text": func_output,
                         "meta": tool_meta,
                     }
-                    await broadcast(
-                        {
-                            "type": "tool_result",
-                            "text": func_output,
-                            "data": {
-                                "function": executed_function,
-                                "meta": tool_meta,
-                            },
-                            "tabId": tab_id,
-                            "timestamp": current_timestamp(),
-                        }
-                    )
+                    if action_plan.get("mode") == "read_then_modify":
+                        refactor_result = await _run_refactor_flow(user_text, tool_meta)
                 except Exception as exc:
                     await broadcast(
                         {
@@ -397,10 +462,15 @@ async def handle_user_message(user_text: str, tab_id: int | None):
         plan_block = _format_action_plan_block(action_plan)
         if plan_block:
             full_prompt = f"{full_prompt}\n\n{plan_block}"
+        refactor_block = _format_refactor_block(refactor_result)
+        if refactor_block:
+            full_prompt = f"{full_prompt}\n\n{refactor_block}"
 
         response_text = await run_llm_call(full_prompt, task=PRIMARY_TASK)
         clean_response = _strip_reasoning_output(response_text)
         context_manager.add_message(conversation_id, "assistant", clean_response)
+        retrieved_block = _format_retrieval_block(tool_payload)
+        combined_response = f"{retrieved_block}\n\n{clean_response}" if retrieved_block else clean_response
         topic_embedding = context_manager.get_context_embedding(conversation_id)
         topic_manager.update_topic_embedding(tab_id, topic_id, topic_embedding)
 
@@ -414,11 +484,12 @@ async def handle_user_message(user_text: str, tab_id: int | None):
         await broadcast(
             {
                 "type": "llm_response",
-                "text": clean_response,
+                "text": combined_response,
                 "data": {
                     "task": PRIMARY_TASK,
                     "function": executed_function,
                     "toolResult": tool_payload,
+                    "refactorResult": refactor_result,
                     "routingDebug": {
                         "functionRouter": routing_result.get("function_router"),
                         "fallback": routing_result.get("fallback_function"),
@@ -442,7 +513,7 @@ async def handle_user_message(user_text: str, tab_id: int | None):
             }
         )
 
-        _remember_user_request(tab_id, user_text, clean_response)
+        _remember_user_request(tab_id, user_text, combined_response)
 
     except Exception as exc:
         await broadcast(
@@ -519,6 +590,10 @@ routing_manager = MultiSignalRouter(
     run_llm_call=run_llm_call,
     tool_definitions=tool_service.function_definitions,
     embedder=shared_embedder,
+)
+refactor_service = RefactorService(
+    workspace_root=WORKSPACE_ROOT,
+    run_llm_call=run_llm_call,
 )
 
 
