@@ -1,11 +1,11 @@
-# 🚀 RAG 기반 코드 분석·리팩토링 Agent
+#  RAG 기반 코드 분석·리팩토링 Agent
 
-## 🏗️ 시스템 구조
+##  시스템 구조
 <img width="789" src="https://github.com/user-attachments/assets/82d8ea84-41a7-43ac-83d2-f437f6ecb4c7" />
 
 ---
 
-# 🔥 주요 기능
+# 주요 기능
 
 ## 1) 사용자 의도 파악 (Intent Classification)
 
@@ -32,13 +32,13 @@ GitHub 프로젝트나 코드 내용에 대한 질문이 들어오면 아래 파
 4. 사용자 질의 + 관련 Context를 LLM 입력으로 전달  
 5. 정확한 해설·요약·코드 분석 제공
 
-➡️ **사용자는 직접 파일을 찾을 필요 없이 자연어로 원하는 정보를 조회할 수 있습니다.**
+➡️ **사용자는 직접 파일을 찾을 필요 없이 자연어로 원하는 정보를 조회**
 
 ---
 
 ## 3) 코드 리팩토링 (LLM 기반 Code Transformer)
 
-Agent는 검색된 Context와 사용자 요청을 기반으로 **코드를 자동 리팩토링**합니다.
+Agent는 검색된 Context와 사용자 요청을 기반으로 코드를 리팩토링
 
 - 코드 구조 분석  
 - 모듈·함수 간 역할 정리  
@@ -46,13 +46,13 @@ Agent는 검색된 Context와 사용자 요청을 기반으로 **코드를 자�
 - 프레임워크 변환 (TensorFlow → PyTorch 등)  
 - 필요 시 함수 단위 재작성  
 
-➡️ **협업 프로젝트 온보딩 속도를 높이고 코드 품질을 유지하는 데 도움이 됩니다.**
+➡️ **협업 프로젝트 온보딩 속도를 높이고 코드 품질을 유지하는 데 도움**
 
 ---
 
-# 🔍 Routing Signal Breakdown
+#  Routing Signal Breakdown
 
-Agent는 아래 세 가지 신호를 종합해 Routing을 결정합니다.
+Agent는 아래 세 가지 신호를 종합해 Routing을 결정
 
 | Signal Type | Description | Output Example |
 |-------------|-------------|----------------|
@@ -62,7 +62,7 @@ Agent는 아래 세 가지 신호를 종합해 Routing을 결정합니다.
 
 ---
 
-## 🔧 Self-Checker Output  
+## Self-Checker Output  
 | Metric | 설명 | 예시 |
 |--------|------|------|
 | **Confidence** | 모델이 해당 답변에 대해 가진 확신도 | `0.41` |
@@ -70,9 +70,9 @@ Agent는 아래 세 가지 신호를 종합해 Routing을 결정합니다.
 
 ---
 
-# ⚙️ Routing 방식
+#  Routing 방식
 
-Routing Aggregator는 아래와 같은 **가중합(Weighted Sum)** 으로 신호를 통합합니다.
+Routing Aggregator는 아래와 같은 **가중합(Weighted Sum)** 으로 신호 통합
 
 ```
  final_confidence =
@@ -90,7 +90,7 @@ Routing Aggregator는 아래와 같은 **가중합(Weighted Sum)** 으로 신호
 
 ---
 
-# ✨ 요약
+#  요약
 
 이 시스템은 다음을 목표로 설계되었습니다.
 
@@ -101,4 +101,5 @@ Routing Aggregator는 아래와 같은 **가중합(Weighted Sum)** 으로 신호
 
 # 📌 전체 Routing Flow
 <img width="778" height="430" alt="image" src="https://github.com/user-attachments/assets/b048b7de-332d-4612-bb81-913883d5c8e3" />
+
 
